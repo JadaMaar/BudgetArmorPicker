@@ -2,7 +2,14 @@ import os
 from requests_oauthlib import OAuth2Session
 from dotenv import load_dotenv
 import pickle
+from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
+from functools import partial
+from InquirerPy import inquirer
+from InquirerPy.base.control import Choice
+from InquirerPy.separator import Separator
+import pyperclip
+
 
 armor_slots = {
     26: "Helmet",
@@ -42,10 +49,6 @@ def unwrap_stats(stats):
     strength = stats["4244567218"]["value"]
 
     return f"Int: {intellect}, Res: {resilience}, Disc: {discipline}, Mob: {mobility}, Strength: {strength}"
-
-from multiprocessing import Pool, cpu_count
-from tqdm import tqdm
-from functools import partial
 
 STAT_KEYS = {
     "int": "144602215",
@@ -131,17 +134,19 @@ def calculate_combinations_parallel(guardian_class, target_values, h, a, c, l, b
         for k in STAT_KEYS:
             max_others[k] = max(max_others[k], maxes[k])
 
+    copy_combo_string = []
     if print_found:
         all_combinations.sort(key=lambda x: x["total"])
-        output_combination(all_combinations, target_values, guardian_class, h, a, c, l, print_found)
+        copy_combo_string = output_combination(all_combinations, target_values, guardian_class, h, a, c, l, print_found)
     else:
         print(f"Maximum possible values with the current targets: {max_others}")
 
-    return max_others
+    return max_others, copy_combo_string
 
 
 def output_combination(combos, target_values: dict, guardian_class: int, h: dict, a: dict, c: dict, l: dict, print_found=True):
-    for combo in combos:
+    copy_combo_string = []
+    for i, combo in enumerate(combos):
         intellect = combo["int"]
         resilience = combo["res"]
         discipline = combo["dis"]
@@ -158,13 +163,15 @@ def output_combination(combos, target_values: dict, guardian_class: int, h: dict
         chest_id = combo["chest"]
 
         if print_found:
-            print("-------------------------")
+            print(f"------------({i})-------------")
             print(f"Helmet: {unwrap_stats(h[guardian_class][helmet_id]["stats"])}, ID:{helmet_id}")
             print(f"Arms: {unwrap_stats(a[guardian_class][arms_id]["stats"])}, ID:{arms_id}")
             print(f"Chest: {unwrap_stats(c[guardian_class][chest_id]["stats"])}, ID:{chest_id}")
             print(f"Legs: {unwrap_stats(l[guardian_class][legs_id]["stats"])}, ID:{legs_id}")
 
             print(f"Total: {intellect + resilience + discipline + mobility + strength}, Int: {intellect}, Res: {resilience}, Dis: {discipline}, Rec: {recovery}, Mob: {mobility}, Str: {strength}")
+            copy_combo_string.append(f"id:{helmet_id} or id:{arms_id} or id:{chest_id} or id:{legs_id}")
+    return copy_combo_string
 
 if __name__ == "__main__":
     load_dotenv()
@@ -248,36 +255,46 @@ if __name__ == "__main__":
     # print(armor)
 
     # TODO: do some for loops to check the stats sum of all possible combinations
-    while True:
-        current_class = input("Select which class you want to find armor for (0 Titan, 1 Hunter, 2 Warlock): \n")
-        if current_class not in ["0", "1", "2"]:
-            print("Select a valid class!")
-        else:
-            current_class = int(current_class)
-            break
+    # while True:
+        # current_class = input("Select which class you want to find armor for (0 Titan, 1 Hunter, 2 Warlock): \n")
+    current_class = inquirer.select(
+        message="Select a Class:",
+        choices=[
+            Choice(name="Titan", value=0),
+            Choice(name="Hunter", value=1),
+            Choice(name="Warlock", value=2)
+        ],
+        default=None,
+    ).execute()
 
     print(f"{len(helmet[current_class]) + len(chest[current_class]) + len(arm[current_class]) + len(legs[current_class])} armor pieces found for class {current_class}")
 
     targets = dict()
-    max_possible_stats = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, False)
+    max_possible_stats, copy_combo_string = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, False)
+
 
     while True:
         cmd = input("cmd: ")
         if cmd == "help":
             print("The following commands are available:")
-            print("class [classNum] //changes the class to the selected one")
+            print("class //changes the class to the selected one")
             print("[stat] [value] //sets the desired target value")
-        elif cmd.startswith("class"):
-            cmd_split = cmd.split()
-            if len(cmd_split) == 2 and cmd_split[1] in ["0", "1", "2"]:
-                current_class = int(cmd_split[1])
-                max_possible_stats = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, False)
-            else:
-                print("Invalid use of the command 'class'.")
+            print("copy [index] //copies a string to search for the combination in DIM for the given index of the last search query")
+        elif cmd == "class":
+            current_class = inquirer.select(
+                message="Select a Class:",
+                choices=[
+                    Choice(name="Titan", value=0),
+                    Choice(name="Hunter", value=1),
+                    Choice(name="Warlock", value=2)
+                ],
+                default=None,
+            ).execute()
+            max_possible_stats, _ = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond,False)
         elif cmd == "reset":
             targets = dict()
             print(f"current focus: {targets}")
-            max_possible_stats = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, False)
+            max_possible_stats, _ = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, False)
         elif cmd.startswith(("mob", "res", "rec", "dis", "int", "str")):
             tmp_targets = dict()
             valid = True
@@ -294,7 +311,7 @@ if __name__ == "__main__":
                 else:
                     targets[stat] = target_value
                     print(f"current focus: {targets}")
-                    max_possible_stats = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, False)
+                    max_possible_stats, _ = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, False)
             except ValueError as e:
                 print("A value is required after each stat e.g. 'mob 70'")
                 valid = False
@@ -303,7 +320,16 @@ if __name__ == "__main__":
                 print("A value is required after each stat e.g. 'mob 70'")
                 valid = False
         elif cmd == "search":
-            max_possible_stats = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, True)
+            max_possible_stats, copy_combo_string = calculate_combinations_parallel(current_class, targets, helmet, arm, chest, legs, bond, True)
+        elif cmd.startswith("copy"):
+            try:
+                cmd = cmd.split()
+                index = int(cmd[1])
+                pyperclip.copy(copy_combo_string[index])
+                print(f"Copied '{copy_combo_string[index]}' to clipboard.")
+            except Exception as e:
+                print("Invalid use of the copy command.")
+
         elif cmd == "exit":
             break
 

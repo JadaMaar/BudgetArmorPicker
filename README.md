@@ -18,13 +18,15 @@ CLIENT_SECRET=RkOMORlGLC7qQK3Lydz8ytcJK1hgEIut-dHbqtm1Vo8
 1. Start the script
 2. Click on the Authorization Link. This will send you to https://www.google.com/?code=MYAUTHCODE
 3. Copy the entire URL into the console
-4. Select the initial class for which you want to find armor (Titan = 0, Hunter = 1, Warlock = 2)
+4. Select the initial class for which you want to find armor
 
 Commands:
 - `<stat> <value>` Sets the desired value for a given stat without the use of any stat mods.
   - `<stat>` can be `mob`, `res`, `rec`, `dis`, `int`, `str`
   - `<value>` can not be higher than the highest possible value
-- `rest` Sets the desired value for each stat to 0
+- `reset` Sets the desired value for each stat to 0
 - `search` Prints all armor combinations that satisfy the selected stats sorted by their total stats
-- `class <id>` Switches the class you want to find armor for (Titan = 0, Hunter = 1, Warlock = 2)
+- `copy <index>` Copies a string to search for the entire set using DIM
+  - `<index>` Number shown above each result when using search. Always applies to the latest search query
+- `class` Switches the class you want to find armor for
 - `exit` Exits the program :)
